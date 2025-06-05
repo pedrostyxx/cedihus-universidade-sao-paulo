@@ -1,0 +1,75 @@
+version: "3.7"
+
+services:
+  # Serviço do WordPress
+  wordpress_cedihus:
+    image: wordpress:latest # Você pode especificar uma versão, ex: wordpress:6.4
+    container_name: wordpress_cedihus
+    restart: unless-stopped
+    environment:
+      WORDPRESS_DB_HOST: db_cedihus:3306 # Nome do serviço do banco de dados e porta
+      WORDPRESS_DB_USER: wordpress_user # Usuário do banco de dados (defina abaixo)
+      WORDPRESS_DB_PASSWORD: "SECRETSENHADOBANCO" # Senha do banco de dados (defina abaixo e use uma senha forte)
+      WORDPRESS_DB_NAME: wordpress_db # Nome do banco de dados (defina abaixo)
+      WORDPRESS_TABLE_PREFIX: wp_ # Prefixo da tabela (opcional, mas bom para segurança)
+      # WORDPRESS_DEBUG: 1 # Descomente para habilitar debug, se necessário
+    volumes:
+      - wordpress_cedihus_files:/var/www/html # Volume para os arquivos do WordPress
+    networks:
+      - network_public
+    depends_on:
+      - db_cedihus
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager # Ou o worker desejado
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.wordpress_cedihus.rule=Host(`cedihus.styxx.cloud`)"
+        - "traefik.http.routers.wordpress_cedihus.entrypoints=websecure"
+        - "traefik.http.routers.wordpress_cedihus.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.wordpress_cedihus.service=wordpress_cedihus_svc"
+        - "traefik.http.services.wordpress_cedihus_svc.loadbalancer.server.port=80"
+        # Se você tem um middleware global para X-Forwarded-Proto como 'sslheader@docker'
+        # usado em seu chatwoot.yaml, você pode usá-lo:
+        - "traefik.http.routers.wordpress_cedihus.middlewares=sslheader@docker"
+        # Caso contrário, defina um específico ou certifique-se que o Traefik está passando o header X-Forwarded-Proto
+        # Exemplo de definição de middleware (se não existir um global):
+        # - "traefik.http.middlewares.wp_cedihus_sslheader.headers.customrequestheaders.X-Forwarded-Proto=https"
+        # - "traefik.http.routers.wordpress_cedihus.middlewares=wp_cedihus_sslheader@docker"
+
+  # Serviço do Banco de Dados MariaDB
+  db_cedihus:
+    image: mariadb:latest # Você pode especificar uma versão, ex: mariadb:10.11
+    container_name: db_cedihus
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: "SECRETSENHAROOTDOBANCO" # Senha forte para o usuário root do MariaDB
+      MARIADB_DATABASE: wordpress_db # Mesmo nome do banco de dados definido acima
+      MARIADB_USER: wordpress_user # Mesmo usuário definido acima
+      MARIADB_PASSWORD: "SECRETSENHADOBANCO" # Mesma senha definida acima e use uma senha forte
+    volumes:
+      - wordpress_cedihus_db:/var/lib/mysql # Volume para os dados do MariaDB
+    networks:
+      - network_public
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager # Ou o worker desejado
+
+# Definição dos Volumes
+volumes:
+  wordpress_cedihus_files: # Docker criará este volume para os arquivos do WordPress
+    name: wordpress_cedihus_files
+  wordpress_cedihus_db: # Docker criará este volume para os dados do banco de dados
+    name: wordpress_cedihus_db
+
+# Definição da Rede (usando a existente)
+networks:
+  network_public:
+    external: true
+    name: network_public
